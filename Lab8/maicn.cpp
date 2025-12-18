@@ -82,10 +82,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             return 0;
         }
         case ID_MODE_FOLLOWING: {
+            CheckMenuItem(GetMenu(hWnd), ID_MODE_FOLLOWING, MF_CHECKED);
+            CheckMenuItem(GetMenu(hWnd), ID_MODE_LINE, MF_UNCHECKED);
             useLineMode = false;
             return 0;
         }
         case ID_MODE_LINE: {
+            CheckMenuItem(GetMenu(hWnd), ID_MODE_FOLLOWING, MF_UNCHECKED);
+            CheckMenuItem(GetMenu(hWnd), ID_MODE_LINE, MF_CHECKED);
             useLineMode = true;
             return 0;
         }
@@ -106,22 +110,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     int dx = pt.x - prevClickPt.x;
                     int dy = pt.y - prevClickPt.y;
                     int steps = max(abs(dx), abs(dy));
-                    if (steps == 0) {
-                        SetPixelV(hDc, pt.x, pt.y, RGB(0, 0, 0));
-                        buffer[pt.y - drawRect.top][pt.x - drawRect.left] = 255;
-                    }
-                    else {
-                        double sx = dx / (double)steps;
-                        double sy = dy / (double)steps;
-                        double x = prevClickPt.x, y = prevClickPt.y;
-                        for (int i = 0; i <= steps; ++i) {
-                            POINT p = { (LONG)lround(x), (LONG)lround(y) };
-                            if (PtInRect(&drawRect, p)) {
-                                SetPixelV(hDc, p.x, p.y, RGB(0, 0, 0));
-                                buffer[p.y - drawRect.top][p.x - drawRect.left] = 255;
-                            }
-                            x += sx; y += sy;
+                    double sx = dx / (double)steps;
+                    double sy = dy / (double)steps;
+                    double x = prevClickPt.x, y = prevClickPt.y;
+                    for (int i = 0; i <= steps; ++i) {
+                        prevClickPt = { (LONG)x, (LONG)y };
+                        if (PtInRect(&drawRect, prevClickPt)) {
+                            SetPixelV(hDc, prevClickPt.x, prevClickPt.y, RGB(0, 0, 0));
+                            buffer[prevClickPt.y][prevClickPt.x] = 255;
                         }
+                        x += sx; y += sy;
                     }
                     prevClickPt = pt;
                 }
@@ -145,22 +143,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
                     int dx = pt.x - prevMovePt.x;
                     int dy = pt.y - prevMovePt.y;
                     int steps = max(abs(dx), abs(dy));
-                    if (steps == 0) {
-                        SetPixelV(hDc, pt.x, pt.y, RGB(0, 0, 0));
-                        buffer[pt.y - drawRect.top][pt.x - drawRect.left] = 255;
-                    }
-                    else {
-                        double sx = dx / (double)steps;
-                        double sy = dy / (double)steps;
-                        double x = prevMovePt.x, y = prevMovePt.y;
-                        for (int i = 0; i <= steps; ++i) {
-                            POINT p = { (LONG)lround(x), (LONG)lround(y) };
-                            if (PtInRect(&drawRect, p)) {
-                                SetPixelV(hDc, p.x, p.y, RGB(0, 0, 0));
-                                buffer[p.y - drawRect.top][p.x - drawRect.left] = 255;
-                            }
-                            x += sx; y += sy;
+                    double sx = dx / (double)steps;
+                    double sy = dy / (double)steps;
+                    double x = prevMovePt.x, y = prevMovePt.y;
+                    for (int i = 0; i <= steps; ++i) {
+                        POINT p = { (LONG)lround(x), (LONG)lround(y) };
+                        if (PtInRect(&drawRect, p)) {
+                            SetPixelV(hDc, p.x, p.y, RGB(0, 0, 0));
+                            buffer[p.y - drawRect.top][p.x - drawRect.left] = 255;
                         }
+                        x += sx; y += sy;
                     }
                 }
                 ReleaseDC(hWnd, hDc);
@@ -192,15 +184,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         int minW = (int)ceil(1.2 * N);
         int minH = (int)ceil(1.2 * M);
         RECT req = { 0,0,minW,minH };
-        AdjustWindowRectEx(&req, GetWindowLong(hWnd, GWL_STYLE),
-            (GetMenu(hWnd) != NULL), GetWindowLong(hWnd, GWL_EXSTYLE));
+        AdjustWindowRectEx(&req, GetWindowLong(hWnd, GWL_STYLE), (GetMenu(hWnd) != NULL), GetWindowLong(hWnd, GWL_EXSTYLE));
         int minWinW = req.right - req.left;
         int minWinH = req.bottom - req.top;
         if ((pRect->right - pRect->left) < minWinW)
             pRect->right = pRect->left + minWinW;
         if ((pRect->bottom - pRect->top) < minWinH)
             pRect->bottom = pRect->top + minWinH;
-        return TRUE;
+        return 0;
     }
     case WM_DESTROY:
         ::PostQuitMessage(0);
