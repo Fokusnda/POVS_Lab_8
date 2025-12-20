@@ -4,9 +4,8 @@
 //
 #define IDR_MENU1                       101
 #define ID_FILE_EXIT                    40001
-#define ID_MODE_FOLLOING                40002
-#define ID_MODE_FOLLOWING               40003
-#define ID_MODE_LINE                    40004
+#define ID_MODE_FOLLOWING               40002
+#define ID_MODE_LINE                    40003
 
 // Next default values for new objects
 // 

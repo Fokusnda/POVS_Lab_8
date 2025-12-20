@@ -11,8 +11,16 @@
 #define WINDOW_WIDTH 0.5
 #define WINDOW_HEIGHT 0.5
 
-#define M 300
 #define N 400
+#define M 300
+
+struct AppState {
+    BYTE pixels[M][N];
+    RECT drawRect;
+    POINT prevPoint;
+    bool hasPrevPt;
+	bool lineMode;
+};
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
@@ -64,18 +72,14 @@ int WINAPI  WinMain(
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-    static BYTE buffer[M][N] = {};
-    static RECT drawRect = { 0, 0, N, M };
-    static bool useLineMode = false;
-
-    static bool  hasPrevMove = false;
-    static POINT prevMovePt = { 0, 0 };
-
-    static bool  hasPrevClick = false;
-    static POINT prevClickPt = { 0, 0 };
-
     switch (message) {
+    case WM_CREATE: {
+        AppState* state = new AppState{};
+		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)state);
+        return 0;
+    }
     case WM_COMMAND: {
+		AppState* state = (AppState*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
         switch (LOWORD(wParam)) {
         case ID_FILE_EXIT: {
             DestroyWindow(hWnd);
@@ -84,116 +88,105 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         case ID_MODE_FOLLOWING: {
             CheckMenuItem(GetMenu(hWnd), ID_MODE_FOLLOWING, MF_CHECKED);
             CheckMenuItem(GetMenu(hWnd), ID_MODE_LINE, MF_UNCHECKED);
-            useLineMode = false;
+            state->lineMode = false;
             return 0;
         }
         case ID_MODE_LINE: {
             CheckMenuItem(GetMenu(hWnd), ID_MODE_FOLLOWING, MF_UNCHECKED);
             CheckMenuItem(GetMenu(hWnd), ID_MODE_LINE, MF_CHECKED);
-            useLineMode = true;
+            state->lineMode = true;
             return 0;
         }
         }
-        return 0;
-    }
-    case WM_LBUTTONDOWN: {
-        if (useLineMode) {
-            POINT pt = { LOWORD(lParam), HIWORD(lParam) };
-            if (PtInRect(&drawRect, pt)) {
-                HDC hDc = GetDC(hWnd);
-
-                if (!hasPrevClick) {
-                    prevClickPt = pt;
-                    hasPrevClick = true;
-                }
-                else {
-                    int dx = pt.x - prevClickPt.x;
-                    int dy = pt.y - prevClickPt.y;
-                    int steps = max(abs(dx), abs(dy));
-                    double sx = dx / (double)steps;
-                    double sy = dy / (double)steps;
-                    double x = prevClickPt.x, y = prevClickPt.y;
-                    for (int i = 0; i <= steps; ++i) {
-                        prevClickPt = { (LONG)x, (LONG)y };
-                        if (PtInRect(&drawRect, prevClickPt)) {
-                            SetPixelV(hDc, prevClickPt.x, prevClickPt.y, RGB(0, 0, 0));
-                            buffer[prevClickPt.y][prevClickPt.x] = 255;
-                        }
-                        x += sx; y += sy;
-                    }
-                    prevClickPt = pt;
-                }
-
-                ReleaseDC(hWnd, hDc);
-            }
-            return 0;
-        }
-        return 0;
-    }
-    case WM_MOUSEMOVE: {
-        if (!useLineMode && (wParam & MK_LBUTTON)) {
-            POINT pt = { LOWORD(lParam), HIWORD(lParam) };
-            if (PtInRect(&drawRect, pt)) {
-                HDC hDc = GetDC(hWnd);
-                if (!hasPrevMove) {
-                    SetPixelV(hDc, pt.x, pt.y, RGB(0, 0, 0));
-                    buffer[pt.y - drawRect.top][pt.x - drawRect.left] = 255;
-                }
-                else {
-                    int dx = pt.x - prevMovePt.x;
-                    int dy = pt.y - prevMovePt.y;
-                    int steps = max(abs(dx), abs(dy));
-                    double sx = dx / (double)steps;
-                    double sy = dy / (double)steps;
-                    double x = prevMovePt.x, y = prevMovePt.y;
-                    for (int i = 0; i <= steps; ++i) {
-                        POINT p = { (LONG)lround(x), (LONG)lround(y) };
-                        if (PtInRect(&drawRect, p)) {
-                            SetPixelV(hDc, p.x, p.y, RGB(0, 0, 0));
-                            buffer[p.y - drawRect.top][p.x - drawRect.left] = 255;
-                        }
-                        x += sx; y += sy;
-                    }
-                }
-                ReleaseDC(hWnd, hDc);
-                prevMovePt = pt;
-                hasPrevMove = true;
-            }
-        }
-        else {
-            hasPrevMove = false;
-        }
-        return 0;
-    }
-    case WM_PAINT: {
-        PAINTSTRUCT ps;
-        HDC hDc = BeginPaint(hWnd, &ps);
-        Rectangle(hDc, drawRect.left, drawRect.top, drawRect.right, drawRect.bottom);
-        for (int y = 0; y < M; y++) {
-            for (int x = 0; x < N; x++) {
-                if (buffer[y][x]) {
-                    SetPixelV(hDc, drawRect.left + x, drawRect.top + y, RGB(0, 0, 0));
-                }
-            }
-        }
-        EndPaint(hWnd, &ps);
         return 0;
     }
     case WM_SIZING: {
-        RECT* pRect = (RECT*)lParam;
-        int minW = (int)ceil(1.2 * N);
-        int minH = (int)ceil(1.2 * M);
-        RECT req = { 0,0,minW,minH };
-        AdjustWindowRectEx(&req, GetWindowLong(hWnd, GWL_STYLE), (GetMenu(hWnd) != NULL), GetWindowLong(hWnd, GWL_EXSTYLE));
-        int minWinW = req.right - req.left;
-        int minWinH = req.bottom - req.top;
-        if ((pRect->right - pRect->left) < minWinW)
-            pRect->right = pRect->left + minWinW;
-        if ((pRect->bottom - pRect->top) < minWinH)
-            pRect->bottom = pRect->top + minWinH;
+		WORD fwSide = LOWORD(wParam);
+		LPRECT pRect = (LPRECT)lParam;
+
+		const double minWidth = 1.2 * N;
+		const double minHeight = 1.2 * M;
+
+		int width = pRect->right - pRect->left;
+		int height = pRect->bottom - pRect->top;
+
+        if (width < minWidth) {
+            if (fwSide == WMSZ_LEFT || fwSide == WMSZ_TOPLEFT || fwSide == WMSZ_BOTTOMLEFT) {
+                pRect->left = pRect->right - (int)minWidth;
+            }
+            else { pRect->right = pRect->left + (int)minWidth; }
+        }
+
+        if (height < minHeight) {
+            if (fwSide == WMSZ_TOP || fwSide == WMSZ_TOPLEFT || fwSide == WMSZ_TOPRIGHT) {
+                pRect->top = pRect->bottom - (int)minHeight;
+            }
+            else { pRect->bottom = pRect->top + (int)minHeight; }
+		}
+    }
+    case WM_PAINT: {
+        AppState* state = (AppState*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+
+        PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hWnd, &ps);
+
+        Rectangle(hdc, 0, 0, N, M);
+		state->drawRect = { 0, 0, N, M };
+        for (int y = 0; y < M; y++) {
+            for (int x = 0; x < N; x++) {
+                if (state->pixels[y][x]) {
+                    SetPixelV(hdc, x, y, RGB(0, 0, 0));
+                }
+			}
+        }
+
+        EndPaint(hWnd, &ps);
+        return 0;
+    }
+    case WM_MOUSEMOVE: {
+		AppState* state = (AppState*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+
+		POINT mPt = { LOWORD(lParam), HIWORD(lParam) };
+
+        if (wParam & MK_LBUTTON) {
+            if (PtInRect(&state->drawRect, mPt)) {
+				HDC hdc = GetDC(hWnd);
+                if (!state->lineMode) {
+					SetPixelV(hdc, mPt.x, mPt.y, RGB(0, 0, 0));
+					state->pixels[mPt.y][mPt.x] = 1;
+                }
+                else {
+                    if (state->hasPrevPt) {
+						int dx = mPt.x - state->prevPoint.x;
+						int dy = mPt.y - state->prevPoint.y;
+						int steps = max(abs(dx), abs(dy));
+
+                        for (int i = 0; i <= steps; i++) {
+							int px = state->prevPoint.x + i * dx / steps;
+							int py = state->prevPoint.y + i * dy / steps;
+
+                            if (px >= 0 && px < N && py >= 0 && py < M) {
+								SetPixelV(hdc, px, py, RGB(0, 0, 0));
+                                state->pixels[py][px] = 1;
+                            }
+                        }
+                    }
+
+					state->prevPoint = mPt;
+                    state->hasPrevPt = true;
+                }
+                ReleaseDC(hWnd, hdc);
+            }
+        }
+        else {
+			state->hasPrevPt = false;
+        }
+
         return 0;
     }
     case WM_DESTROY:
+		AppState* state = (AppState*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+        delete state;
         ::PostQuitMessage(0);
         return 0;
     }
