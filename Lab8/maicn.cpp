@@ -22,8 +22,40 @@ struct AppState {
 	bool lineMode;
 };
 
+void Draw(HWND hWnd, AppState* state, POINT mPt) {
+    if (PtInRect(&state->drawRect, mPt)) {
+        HDC hdc = GetDC(hWnd);
+        if (state->hasPrevPt) {
+            POINT d;
+            d.x = mPt.x - state->prevPoint.x;
+            d.y = mPt.y - state->prevPoint.y;
+            int steps = max(abs(d.x), abs(d.y));
+            if (steps == 0) {
+                SetPixelV(hdc, mPt.x, mPt.y, RGB(0, 0, 0));
+                state->pixels[mPt.y][mPt.x] = 1;
+            }
+            else {
+                POINT pt;
+                for (int i = 0; i <= steps; ++i) {
+                    pt.x = state->prevPoint.x + i * d.x / steps;
+                    pt.y = state->prevPoint.y + i * d.y / steps;
+                    SetPixelV(hdc, pt.x, pt.y, RGB(0, 0, 0));
+                    state->pixels[pt.y][pt.x] = 1;
+                }
+            }
+        }
+        else {
+            SetPixelV(hdc, mPt.x, mPt.y, RGB(0, 0, 0));
+            state->pixels[mPt.y][mPt.x] = 1;
+        }
+        state->prevPoint = mPt;
+        state->hasPrevPt = true;
+        ReleaseDC(hWnd, hdc);
+    }
+    else if (!state->lineMode) { state->hasPrevPt = false; }
+}
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
-void Draw(HWND hWnd, AppState* state, POINT mPt);
 
 int WINAPI  WinMain(
     _In_ HINSTANCE hInstance,
@@ -62,6 +94,18 @@ int WINAPI  WinMain(
 
     ::ShowWindow(overlappedWindow, nCmdShow);
 
+    AppState appState;
+    for (int y = 0; y < M; y++) {
+        for (int x = 0; x < N; x++) {
+            appState.pixels[y][x] = 0;
+        }
+    }
+    appState.drawRect = { 0, 0, N, M };
+    appState.prevPoint = { 0, 0 };
+    appState.hasPrevPt = false;
+    appState.lineMode = false;
+    SetWindowLongPtr(overlappedWindow, GWLP_USERDATA, (LONG_PTR)&appState);
+
     MSG msg;
     while (::GetMessage(&msg, NULL, 0, 0)) {
         ::DispatchMessage(&msg);
@@ -71,47 +115,9 @@ int WINAPI  WinMain(
 }
 //=========================================================
 
-void Draw(HWND hWnd, AppState* state, POINT mPt) {
-    if (PtInRect(&state->drawRect, mPt)) {
-        HDC hdc = GetDC(hWnd);
-        if (state->hasPrevPt) {
-            POINT d;
-            d.x = mPt.x - state->prevPoint.x;
-            d.y = mPt.y - state->prevPoint.y;
-            int steps = max(abs(d.x), abs(d.y));
-            if (steps == 0) {
-                SetPixelV(hdc, mPt.x, mPt.y, RGB(0, 0, 0));
-                state->pixels[mPt.y][mPt.x] = 1;
-            }
-            else {
-                POINT pt;
-                for (int i = 0; i <= steps; ++i) {
-                    pt.x = state->prevPoint.x + i * d.x / steps;
-                    pt.y = state->prevPoint.y + i * d.y / steps;
-                    SetPixelV(hdc, pt.x, pt.y, RGB(0, 0, 0));
-                    state->pixels[pt.y][pt.x] = 1;
-                }
-            }
-        }
-        else {
-            SetPixelV(hdc, mPt.x, mPt.y, RGB(0, 0, 0));
-            state->pixels[mPt.y][mPt.x] = 1;
-        }
-        state->prevPoint = mPt;
-        state->hasPrevPt = true;
-        ReleaseDC(hWnd, hdc);
-    }
-}
-
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message) {
-    case WM_CREATE: {
-        AppState* state = new AppState{};
-        state->drawRect = { 0, 0, N, M };
-		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)state);
-        return 0;
-    }
     case WM_COMMAND: {
 		AppState* state = (AppState*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
         switch (LOWORD(wParam)) {
@@ -145,28 +151,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     }
     case WM_SIZING: {
-		WORD fwSide = LOWORD(wParam);
-		LPRECT pRect = (LPRECT)lParam;
+        LPRECT rect = (LPRECT)lParam;
+        RECT minRect = { 0, 0, N * 1.2, M * 1.2 };
 
-		const double minWidth = 1.2 * N;
-		const double minHeight = 1.2 * M;
+        AdjustWindowRect(&minRect, GetWindowLong(hWnd, GWL_STYLE), (GetMenu(hWnd) != NULL));
 
-		int width = pRect->right - pRect->left;
-		int height = pRect->bottom - pRect->top;
+        int minWidth = minRect.right - minRect.left;
+        int minHeight = minRect.bottom - minRect.top;
 
-        if (width < minWidth) {
-            if (fwSide == WMSZ_LEFT || fwSide == WMSZ_TOPLEFT || fwSide == WMSZ_BOTTOMLEFT) {
-                pRect->left = pRect->right - (int)minWidth;
-            }
-            else { pRect->right = pRect->left + (int)minWidth; }
+        if (rect->right - rect->left < minWidth) {
+            rect->right = rect->left + minWidth;
         }
-
-        if (height < minHeight) {
-            if (fwSide == WMSZ_TOP || fwSide == WMSZ_TOPLEFT || fwSide == WMSZ_TOPRIGHT) {
-                pRect->top = pRect->bottom - (int)minHeight;
-            }
-            else { pRect->bottom = pRect->top + (int)minHeight; }
-		}
+        if (rect->bottom - rect->top < minHeight) {
+            rect->bottom = rect->top + minHeight;
+        }
 
         return 0;
     }
@@ -209,8 +207,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         return 0;
     }
     case WM_DESTROY:
-		AppState* state = (AppState*)GetWindowLongPtr(hWnd, GWLP_USERDATA);
-        delete state;
         ::PostQuitMessage(0);
         return 0;
     }
