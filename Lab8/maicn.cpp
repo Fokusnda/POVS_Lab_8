@@ -152,7 +152,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     }
     case WM_SIZING: {
         LPRECT rect = (LPRECT)lParam;
-        RECT minRect = { 0, 0, N * 1.2, M * 1.2 };
+        RECT minRect = { 0, 0, (LONG)(N * 1.2), (LONG)(M * 1.2) };
 
         AdjustWindowRect(&minRect, GetWindowLong(hWnd, GWL_STYLE), (GetMenu(hWnd) != NULL));
 
